@@ -48,11 +48,23 @@ architecture Behavioral of top_dvi_in is
       port (D0, D1, SCLK, RST: in std_logic; Q: out std_logic);
     end component;
     component DELAYF
-      port (A, LOADIN, MOVE, DIRECTION: in std_logic; Z, CFLAG: out std_logic);
+      generic (
+        del_mode : string := "USER_DEFINED";
+        del_value : integer := 0  
+        );
+      port (A, LOADN, MOVE, DIRECTION: in std_logic; Z, CFLAG: out std_logic);
     end component; 
     component DELAYG
+      generic (
+        del_mode : string := "USER_DEFINED";
+        del_value : integer := 0
+        );
       port (A: in std_logic; Z: out std_logic);
     end component;   
+
+    constant CLK_DELAY_VALUE : integer := 25;
+    constant RGB_DELAY_VALUE : integer := 0;
+
     signal clk_100, locked: std_logic;
     signal clk_pixel, clk_shift: std_logic;
     signal reset_pll, reset_pll_blink: std_logic;
@@ -62,7 +74,11 @@ architecture Behavioral of top_dvi_in is
     signal vga_red, vga_green, vga_blue: std_logic_vector(7 downto 0); -- 8-bit RGB color decoded
     signal vga_hsync, vga_vsync, vga_blank: std_logic; -- frame control
     signal fin_clock, fin_red, fin_green, fin_blue: std_logic_vector(1 downto 0); -- VGA back to final TMDS
+    signal gpa_z: std_logic_vector(3 downto 0);
+    signal q_r, q_g, q_b: std_logic_vector(1 downto 0);
+
 begin
+
   --  led <= rec_red;
     wifi_gpio0 <= btn(0);
     gpdi_ethn <= '1' when btn(0) = '1' else '0';
@@ -74,10 +90,15 @@ begin
     
     -- connect output to monitor Second PMOD on RIGHT BOTTOM
     -- not should show picture with all colors inverted
+--    gp(15) <= not gpa(12);
+--    gp(16) <= not gpa(11);
+--    gp(17) <= not gpa(10);
+--    gp(18) <= not gpa(9);
+
     gp(15) <= not gpa(12);
-    gp(16) <= not gpa(11);
-    gp(17) <= not gpa(10);
-    gp(18) <= not gpa(9);
+    gp(16) <= not gpa_z(2);
+    gp(17) <= not gpa_z(1);
+    gp(18) <= not gpa_z(0);
 
     -- clock recovery PLL with reset and lock
     clk_video_inst: entity work.clk_25_dvi_in_vhd
@@ -123,6 +144,87 @@ begin
       led(7) => led(6) -- If blinks - clock recovery works
     );
 
+-- Forward the pixel clock, but delay it
+
+--ERROR - map: IO Delay 'delay_clk' input signal 'gpdi_dp_c[3]' 
+--can only drive IO Delay input and cannot connect to other components.
+
+--    delay_clk: DELAYG
+--    generic map
+--    (
+--      DEL_VALUE => CLK_DELAY_VALUE
+--    )
+--    port map (
+--      A => clk_pixel,
+--      Z => gpa_z(3)
+--    );
+
+    delay_red: DELAYF
+    generic map
+    (
+      DEL_VALUE => RGB_DELAY_VALUE
+    )
+    port map (
+      A => gpa(11),
+      LOADN => '1',
+      MOVE => '0',
+      DIRECTION => '0',
+      Z => gpa_z(2)
+    );
+
+    ddr_red: IDDRX1F
+    port map (
+      SCLK => clk_shift,
+      D => gpa_z(2),
+      RST => reset,
+      Q0 => q_r(0),
+      Q1 => q_r(1)
+    );
+
+    delay_green: DELAYF
+    generic map
+    (
+      DEL_VALUE => RGB_DELAY_VALUE
+    )
+    port map (
+      A => gpa(10),
+      LOADN => '1',
+      MOVE => '0',
+      DIRECTION => '0',
+      Z => gpa_z(1)
+    );
+
+    ddr_green: IDDRX1F
+    port map (
+      SCLK => clk_shift,
+      D => gpa_z(1),
+      RST => reset,
+      Q0 => q_g(0),
+      Q1 => q_g(1)
+    );
+
+    delay_blue: DELAYF
+    generic map
+    (
+      DEL_VALUE => RGB_DELAY_VALUE
+    )
+    port map (
+      A => gpa(9),
+      LOADN => '1',
+      MOVE => '0',
+      DIRECTION => '0',
+      Z => gpa_z(0)
+    );
+
+    ddr_blue: IDDRX1F
+    port map (
+      SCLK => clk_shift,
+      D => gpa_z(0),
+      RST => reset,
+      Q0 => q_b(0),
+      Q1 => q_b(1)
+    );
+
     -- PLL locked if on
     led(7) <= locked;
     led(5) <= '0';
@@ -164,7 +266,8 @@ begin
     (
       clk_pixel  => clk_pixel,
       clk_shift  => clk_shift,
-      tmds_p     => gpa(12 downto 9),
+      tmds_p(3)  => gpa(12),
+      tmds_p(2 downto 0) => gpa_z(2 downto 0),
       outp_red   => des_red,
       outp_green => des_green,
       outp_blue  => des_blue
