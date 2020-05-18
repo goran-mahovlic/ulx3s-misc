@@ -41,6 +41,18 @@ Port
 end;
 
 architecture Behavioral of top_dvi_in is
+    component IDDRX1F
+      port (D, SCLK, RST: in std_logic; Q0, Q1: out std_logic);
+    end component;
+    component ODDRX1F
+      port (D0, D1, SCLK, RST: in std_logic; Q: out std_logic);
+    end component;
+    component DELAYF
+      port (A, LOADIN, MOVE, DIRECTION: in std_logic; Z, CFLAG: out std_logic);
+    end component; 
+    component DELAYG
+      port (A: in std_logic; Z: out std_logic);
+    end component;   
     signal clk_100, locked: std_logic;
     signal clk_pixel, clk_shift: std_logic;
     signal reset_pll, reset_pll_blink: std_logic;
